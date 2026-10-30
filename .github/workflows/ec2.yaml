@@ -1,4 +1,4 @@
-name: Terraform EC2 Deployment
+name: Build Push and Deploy with Terraform
 
 on:
   push:
@@ -9,8 +9,14 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  AWS_REGION: ap-south-1
+  AWS_ACCOUNT_ID: "354780327224"
+  ECR_REPOSITORY: practice
+  IMAGE_TAG: ${{ github.sha }}
+
 jobs:
-  terraform:
+  build-push-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,25 +27,47 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ap-south-1
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Ensure ECR repository exists
+        run: |
+          aws ecr describe-repositories \
+            --repository-names "$ECR_REPOSITORY" >/dev/null 2>&1 || \
+          aws ecr create-repository \
+            --repository-name "$ECR_REPOSITORY" >/dev/null
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build -t "$IMAGE" ./proj
+          docker push "$IMAGE"
+          echo "IMAGE_URI=$IMAGE" >> "$GITHUB_ENV"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.11.0
 
-      - name: Terraform Init
+      - name: Terraform init
         run: terraform init
 
-      - name: Terraform Format
+      - name: Terraform format check
         run: terraform fmt -check
 
-      - name: Terraform Validate
+      - name: Terraform validate
         run: terraform validate
 
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
+      - name: Terraform plan
+        run: terraform plan -out=tfplan -var="image_uri=$IMAGE_URI" -var="aws_region=$AWS_REGION"
 
-      - name: Terraform Apply
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Terraform apply
         run: terraform apply -auto-approve tfplan
+
+      - name: Show application URL
+        run: terraform output application_url
