@@ -1,16 +1,29 @@
+resource "aws_ecr_repository" "web" {
+  name                 = "practice"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
 resource "aws_instance" "web" {
-  ami                         = data.aws_ami.amazon_linux.id
-  instance_type               = "t2.micro"
-  vpc_security_group_ids      = [aws_security_group.web_sg.id]
-  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
-  user_data_replace_on_change = true
+  ami           = "ami-0c7632fb77f35db43"
+  instance_type = "t2.micro"
+
+  key_name = "practice"
+
+  vpc_security_group_ids = [
+    aws_security_group.web_sg.id
+  ]
+
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
 
   user_data = <<-EOF
     #!/bin/bash
     set -euxo pipefail
 
-    AWS_REGION="${var.aws_region}"
-    IMAGE="${var.image_uri}"
+    AWS_REGION="ap-south-1"
+    IMAGE="${aws_ecr_repository.web.repository_url}:latest"
     ECR_REGISTRY="$(echo "$IMAGE" | cut -d/ -f1)"
     CONTAINER_NAME="myapp-container"
 
@@ -29,6 +42,7 @@ resource "aws_instance" "web" {
 
     docker pull "$IMAGE"
     docker rm -f "$CONTAINER_NAME" || true
+
     docker run -d \
       --name "$CONTAINER_NAME" \
       --restart unless-stopped \

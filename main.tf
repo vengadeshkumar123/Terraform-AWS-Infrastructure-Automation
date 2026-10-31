@@ -1,3 +1,4 @@
+
 terraform {
   required_version = ">= 1.11.0, < 2.0.0"
 
@@ -14,4 +15,8 @@ terraform {
     region       = "ap-south-1"
     use_lockfile = true
   }
+}
+
+provider "aws" {
+  region = "ap-south-1"
 }
